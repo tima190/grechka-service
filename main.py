@@ -68,50 +68,50 @@ async def start_order(callback: types.CallbackQuery, state: FSMContext):
     OrderStates.SELECTING_CATEGORY, F.data.in_(["order_art", "order_program"])
 )
 async def select_category(callback: types.CallbackQuery, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+
     if callback.data == "order_art":
         # Для арта
-        builder = InlineKeyboardBuilder()
         builder.add(
             types.InlineKeyboardButton(
                 text="📝 Заполнить анкету", callback_data="fill_art_form"
             )
         )
         await callback.message.edit_text(
-            "🎨 Условия заказа арт‑работы:\n"
-            "• Срок: 3–7 дней\n"
-            "• Предоплата: 50%\n"
-            "• Правка: по скетчу\n\n"
-            "💰 Примерные цены:\n"
+            "🎨 Хочешь заказать арт? Вот как это работает:\n\n"
+            "• ⏳ Сроки: обычно от 3 до 14 дней (всё зависит от сложности)\n"
+            "• 💰 Предоплата: 50%, остальное — после готовности\n"
+            "• ✏️ Правки возможны на этапе скетча\n\n"
+            "📌 Примерные цены:\n"
             "• Портрет: 1500 ₽\n"
             "• До пояса: 2000 ₽\n"
-            "• Полный рост: 2500–3500 ₽\n"
-            "• Скетч: от 300 ₽, Лайн: от 700 ₽\n"
-            "• Дополнительно: второй персонаж +50%, фон +300–1000 ₽",
+            "• В полный рост: 2500–3500 ₽\n"
+            "• Скетч: от 300 ₽\n"
+            "• Лайн: от 700 ₽\n"
+            "• + Второй персонаж: +50%\n"
+            "• + Фон: +300–1000 ₽ (в зависимости от сложности)\n\n"
+            "Если всё окей — жми на кнопку и заполняй анкету 📝",
             reply_markup=builder.as_markup(),
         )
 
         await state.set_state(OrderStates.ART_ORDER)
 
-    if callback.data == "order_program":
-        # Для программы
-        builder = InlineKeyboardBuilder()
+    else:
+        # Для программы (одноэтапная анкета)
         builder.add(
             types.InlineKeyboardButton(
                 text="📝 Заполнить анкету", callback_data="fill_program_form"
             )
         )
         await callback.message.edit_text(
-            "💻 Условия заказа разработки:\n"
-            "• Срок: от 2 недель\n"
-            "• Требуется ТЗ\n"
-            "• Предоплата: по договорённости",
+            "💻 Хочешь заказать программу? Вот несколько деталей:\n\n"
+            "• ⏳ Сроки: обычно от 2 недель — зависит от сложности\n"
+            "• 📄 Нужно небольшое ТЗ или просто хорошее описание\n"
+            "• 💰 Предоплата — по договорённости, всё обсудим\n\n"
+            "Если всё понятно, жми на кнопку ниже и заполни анкету 📝",
             reply_markup=builder.as_markup(),
         )
         await state.set_state(OrderStates.PROGRAM_ORDER)
-
-
-# ===== Обработка анкет =====
-
 
 # Инициализация заполнения анкеты для арта
 @dp.callback_query(OrderStates.ART_ORDER, F.data == "fill_art_form")
@@ -135,8 +135,21 @@ async def start_art_form(callback: types.CallbackQuery, state: FSMContext):
 
     await state.set_state(OrderStates.FILLING_ART_FORM)
 
+# Инициализация заполнения анкеты для программы (одно сообщение)
+@dp.callback_query(OrderStates.PROGRAM_ORDER, F.data == "fill_program_form")
+async def start_program_form(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "📝 Анкета для заказа разработки:\n\n"
+        "1. Назначение программы (цель, бизнес‑задача)\n"
+        "2. Основной функционал (список фич)\n"
+        "3. Технологии/интеграции (если есть предпочтения)\n"
+        "4. Сроки и бюджет\n"
+        "5. Контакты для связи (телефон, email, Telegram)\n\n"
+        "Отправьте всё одним сообщением, пожалуйста."
+    )
+    await state.set_state(OrderStates.FILLING_PROGRAM_FORM)
 
-# Прием анкеты для арта
+
 @dp.message(OrderStates.FILLING_ART_FORM)
 async def process_art_form(message: types.Message, state: FSMContext):
     # Отправка в спецчат
@@ -149,71 +162,21 @@ async def process_art_form(message: types.Message, state: FSMContext):
     await message.answer("✅ Ваша заявка принята!")
     await state.clear()
 
-
-# Инициализация заполнения анкеты для программы (пошаговый вариант)
-@dp.callback_query(OrderStates.PROGRAM_ORDER, F.data == "fill_program_form")
-async def start_program_form(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(OrderStates.FILLING_PROGRAM_FORM)
-    await state.update_data(steps=[])  # Хранение ответов
-    await callback.message.answer(
-        "📝 Анкета (1/5): Опишите цель программы\n"
-        "Например: «Онлайн‑учёт задач для небольшой команды»"
-    )
-
-
-# Пошаговая обработка анкеты для программы
+# Прием анкеты для программы
 @dp.message(OrderStates.FILLING_PROGRAM_FORM)
-async def process_program_form_step(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    steps = data.get("steps", [])
-    steps.append(message.text)
-
-    if len(steps) == 1:
-        await message.answer(
-            "📝 Анкета (2/5): Какие функции нужны?\n"
-            "Примеры: регистрация, отчёты, экспорт в PDF"
-        )
-        await state.update_data(steps=steps)
-    elif len(steps) == 2:
-        await message.answer(
-            "📝 Анкета (3/5): Технические требования\n"
-            "Примеры: веб‑приложение на React, интеграция с CRM"
-        )
-        await state.update_data(steps=steps)
-    elif len(steps) == 3:
-        await message.answer(
-            "📝 Анкета (4/5): Сроки и бюджет\nПример: 1–2 месяца, бюджет 10,000-30,000 RUB"
-        )
-        await state.update_data(steps=steps)
-    elif len(steps) == 4:
-        await message.answer(
-            "📝 Анкета (5/5): Ваши контакты для связи\n"
-            "Телефон, email, Telegram и удобное время для созвона"
-        )
-        await state.update_data(steps=steps)
-    else:
-        # Финализация анкеты
-        form_text = "\n\n".join(
-            [
-                f"1. Назначение: {steps[0]}",
-                f"2. Функционал: {steps[1]}",
-                f"3. Требования: {steps[2]}",
-                f"4. Бюджет/Сроки: {steps[3]}",
-                f"5. контакты: {steps[3]}",
-            ]
-        )
-
-        # Отправка в спецчат
-        await bot.send_message(
-            chat_id=SPECIAL_CHAT_ID,
-            text=f"🚀 Новая заявка на программу!\n\n"
-            f"От: @{message.from_user.username}\n"
-            f"Данные:\n{form_text}",
-        )
-        await message.answer(
-            "✅ Ваша заявка принята!\nЖдите ответа по контактам, либо в личных сообщениях"
-        )
-        await state.clear()
+async def process_program_form(message: types.Message, state: FSMContext):
+    # Отправка в спецчат
+    await bot.send_message(
+        chat_id=SPECIAL_CHAT_ID,
+        text=(
+            "🚀 Новая заявка на разработку программы!\n\n"
+            f"От: @{message.from_user.username}\n\n"
+            "Данные:\n"
+            f"{message.text}"
+        ),
+    )
+    await message.answer("✅ Ваша заявка принята!")
+    await state.clear()
 
 
 # ===== Запуск =====
